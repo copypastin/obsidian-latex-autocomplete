@@ -1,0 +1,40 @@
+{
+  "name": "obsidian-latex-autocomplete",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dropdown autocomplete for LaTeX commands inside math mode in Obsidian",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "npm run typecheck && node esbuild.config.mjs production",
+    "check": "npm run format:check && npm test && npm run build",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import ./tests/register.mjs --test \"tests/**/*.test.ts\""
+  },
+  "keywords": [
+    "obsidian",
+    "latex",
+    "autocomplete",
+    "math"
+  ],
+  "author": "copypastin",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@types/node": "^26.6.5",
+    "builtin-modules": "^5.4.0",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "prettier": "3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

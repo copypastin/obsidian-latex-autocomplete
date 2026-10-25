@@ -1,0 +1,132 @@
+/* ==========================================================================
+   LaTeX Autocomplete Plugin Styles
+   Polished theme integrating seamlessly with Obsidian's design system.
+   ========================================================================== */
+
+/* Completion info preview container */
+.cm-tooltip.cm-completionInfo {
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m, 8px);
+    box-shadow: var(--shadow-l, 0 8px 24px rgba(0, 0, 0, 0.18));
+    padding: 0;
+    overflow: hidden;
+    max-width: 320px;
+    min-width: 180px;
+    backdrop-filter: blur(8px);
+    z-index: var(--layer-popover, 30);
+}
+
+/* Card layout inside preview */
+.latex-autocomplete-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background-color: var(--background-primary);
+}
+
+/* Category pill / badge */
+.latex-autocomplete-category {
+    align-self: flex-start;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: var(--radius-s, 4px);
+    background-color: var(--background-secondary);
+    color: var(--text-accent, var(--interactive-accent));
+    border: 1px solid var(--background-modifier-border);
+    line-height: 1.3;
+}
+
+/* Prominent math rendering block */
+.latex-autocomplete-math {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    padding: 8px 12px;
+    font-size: 1.35em;
+    background-color: var(--background-secondary);
+    border-radius: var(--radius-s, 4px);
+    border: 1px solid var(--background-modifier-border);
+    color: var(--text-normal);
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.latex-autocomplete-math .MathJax,
+.latex-autocomplete-math .katex,
+.latex-autocomplete-math .math {
+    color: var(--text-normal);
+    font-size: inherit;
+    line-height: normal;
+}
+
+/* Human-readable description */
+.latex-autocomplete-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    padding: 0 2px;
+}
+
+/* Autocomplete dropdown styling */
+.cm-tooltip-autocomplete {
+    border: 1px solid var(--background-modifier-border) !important;
+    border-radius: var(--radius-m, 8px) !important;
+    box-shadow: var(--shadow-l, 0 8px 24px rgba(0, 0, 0, 0.18)) !important;
+    background-color: var(--background-primary) !important;
+    padding: 4px !important;
+}
+
+.cm-tooltip-autocomplete > ul {
+    font-family: var(--font-default);
+    max-height: 280px;
+}
+
+.cm-tooltip-autocomplete > ul > li {
+    border-radius: var(--radius-s, 4px);
+    padding: 4px 8px !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 1px 0;
+    transition: background-color 0.1s ease;
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected="true"] {
+    background-color: var(--background-modifier-hover) !important;
+    color: var(--text-normal) !important;
+}
+
+/* Monospace command name */
+.cm-tooltip-autocomplete .cm-completionLabel {
+    font-family: var(--font-monospace) !important;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+/* Matched query highlight */
+.cm-tooltip-autocomplete .cm-completionMatchedText {
+    text-decoration: none !important;
+    color: var(--text-accent, var(--interactive-accent)) !important;
+    font-weight: 700;
+}
+
+/* Right-aligned command detail description */
+.cm-tooltip-autocomplete .cm-completionDetail {
+    font-style: normal !important;
+    font-size: 0.82em;
+    color: var(--text-muted) !important;
+    margin-left: auto;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
