@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EditorSelection, EditorState, Transaction, TransactionSpec } from "@codemirror/state";
+import {
+    EditorSelection,
+    EditorState,
+    StateEffect,
+    StateField,
+    Transaction,
+    TransactionSpec,
+} from "@codemirror/state";
 import { EditorView, runScopeHandlers, ViewUpdate } from "@codemirror/view";
 import { StreamLanguage } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -22,8 +29,14 @@ import {
 import { DEFAULT_SETTINGS, LatexAutocompleteSettings } from "../src/settings";
 import { UsageTracker } from "../src/usage-tracker";
 import { LATEX_COMMANDS } from "../src/latex-commands";
+import type { GetLatexSuite, LatexSuiteInsert } from "../src/latex-suite";
 
-function createEditor(doc: string, pos: number, settings = DEFAULT_SETTINGS) {
+function createEditor(
+    doc: string,
+    pos: number,
+    settings = DEFAULT_SETTINGS,
+    getLatexSuite?: GetLatexSuite,
+) {
     const tracker = new UsageTracker({ loadData: async () => ({}), saveData: async () => {} });
     // Exercise real CodeMirror transactions and the extension's update listeners.
     // A DOM view isn't needed to check whether a completion query was activated.
@@ -31,7 +44,7 @@ function createEditor(doc: string, pos: number, settings = DEFAULT_SETTINGS) {
         state: EditorState.create({
             doc,
             selection: { anchor: pos },
-            extensions: [createLatexAutocomplete(settings, tracker)],
+            extensions: [createLatexAutocomplete(settings, tracker, getLatexSuite)],
         }),
         hasFocus: true,
         composing: false,
@@ -204,6 +217,181 @@ test("latexCompletionSource: closed inline and display math return suggestions b
         assert.equal(result.options[0].label, "\\frac");
         assert.equal(view.state.sliceDoc(result.to), doc.slice(pos));
     }
+});
+
+test("LaTeX Suite: completed symbols stay untouched and explicit suggestions preserve their case", () => {
+    const symbols = LATEX_COMMANDS.filter(
+        (command) => command.command === command.template && /^\\[A-Za-z]+$/.test(command.command),
+    );
+    for (const symbol of symbols) {
+        const doc = "$" + symbol.command + "$";
+        const pos = doc.length - 1;
+        const { view, tracker } = createEditor(doc, pos);
+        assert.equal(
+            latexCompletionSource(
+                new CompletionContext(view.state, pos, false),
+                DEFAULT_SETTINGS,
+                tracker,
+            ),
+            null,
+            symbol.command,
+        );
+        const explicit = latexCompletionSource(
+            new CompletionContext(view.state, pos, true),
+            DEFAULT_SETTINGS,
+            tracker,
+        );
+        assert.ok(explicit, symbol.command);
+        assert.equal(explicit.options[0].label, symbol.command);
+        assert.equal(view.state.doc.toString(), doc);
+    }
+});
+
+test("LaTeX Suite: every case-sensitive command pair keeps the typed capitalization despite usage history", () => {
+    const commands = LATEX_COMMANDS.filter((command) => /^\\[A-Za-z]+$/.test(command.command));
+    for (const command of commands) {
+        const other = commands.find(
+            (candidate) =>
+                candidate.command !== command.command &&
+                candidate.command.toLowerCase() === command.command.toLowerCase(),
+        );
+        if (!other) continue;
+        const prefix = command.command.slice(0, -1);
+        const doc = "$" + prefix + "$";
+        const { view } = createEditor(doc, doc.length - 1);
+        const tracker = new UsageTracker({ loadData: async () => ({}), saveData: async () => {} });
+        // Use the maximum possible boost to cover even a very frequent command.
+        tracker.getBoostScore = (name) => (name === other.command ? 500 : 0);
+        const result = latexCompletionSource(
+            new CompletionContext(view.state, doc.length - 1, false),
+            DEFAULT_SETTINGS,
+            tracker,
+        );
+        assert.ok(result, prefix);
+        const wanted = result.options.findIndex((option) => option.label === command.command);
+        const unwanted = result.options.findIndex((option) => option.label === other.command);
+        assert.ok(wanted >= 0 && (unwanted < 0 || wanted < unwanted), command.command);
+    }
+});
+
+test("LaTeX Suite: an expansion invalidates old suggestions before they can replace it", async () => {
+    const { view, tracker } = createEditor("$\\Ome$", 5);
+    const result = latexCompletionSource(
+        new CompletionContext(view.state, 5, false),
+        DEFAULT_SETTINGS,
+        tracker,
+    )!;
+    const lower = result.options.find((option) => option.label === "\\omega")!;
+    view.dispatch({ changes: { from: 1, to: 5, insert: "\\Omega" }, selection: { anchor: 7 } });
+    // Exercise both a stale range and CodeMirror's range mapped over the expansion.
+    for (const to of [5, 7]) {
+        (lower.apply as Function)(view, lower, 1, to);
+        assert.equal(view.state.doc.toString(), "$\\Omega$");
+    }
+    await Promise.resolve();
+    assert.equal(completionStatus(view.state), null);
+    assert.equal(tracker.getUsage("\\omega"), undefined);
+});
+
+test("LaTeX Suite: completion acceptance hands templates to Suite without starting a second snippet session", async () => {
+    const field = StateField.define<unknown>({ create: () => ({}), update: (value) => value });
+    let calls = 0;
+    const suite = {
+        api: {
+            fields: { tabstopsStateField: field },
+            shortcuts: {
+                snippet(
+                    editor: EditorView,
+                    edit: { from: number; to: number; insert: LatexSuiteInsert },
+                ) {
+                    calls++;
+                    editor.dispatch({
+                        changes: { from: edit.from, to: edit.to, insert: edit.insert.insert },
+                        selection: { anchor: edit.from + edit.insert.tabstops[0].from },
+                    });
+                    return true;
+                },
+            },
+        },
+    };
+    const getSuite = () => suite;
+    const { view, tracker } = createEditor("$\\fr$", 4, DEFAULT_SETTINGS, getSuite);
+    view.dispatch({ effects: StateEffect.appendConfig.of(field) });
+    const result = latexCompletionSource(
+        new CompletionContext(view.state, 4, false),
+        DEFAULT_SETTINGS,
+        tracker,
+        getSuite,
+    )!;
+    const option = result.options.find((item) => item.label === "\\frac")!;
+    (option.apply as Function)(view, option, result.from, result.to);
+    await Promise.resolve();
+    assert.equal(calls, 1);
+    assert.equal(view.state.doc.toString(), "$\\frac{}{}$");
+    assert.equal(view.state.selection.main.head, 7);
+    assert.equal(hasNextSnippetField(view.state), false);
+    assert.equal(completionStatus(view.state), null);
+    assert.equal(tracker.getUsage("\\frac")?.count, 1);
+});
+
+test("LaTeX Suite: Escape ends an autocomplete template and leaves independent Suite snippets alone", () => {
+    const start = StateEffect.define<null>();
+    const end = StateEffect.define<null>();
+    const field = StateField.define<unknown>({
+        create: () => ({ tabstopGroups: [] }),
+        update(value, transaction) {
+            if (transaction.effects.some((effect) => effect.is(end))) return { tabstopGroups: [] };
+            if (transaction.effects.some((effect) => effect.is(start)))
+                return { tabstopGroups: [{}] };
+            return value;
+        },
+    });
+    const suite = {
+        api: {
+            effects: { removeAllTabstopsEffect: end },
+            fields: { tabstopsStateField: field },
+            shortcuts: {
+                snippet(
+                    editor: EditorView,
+                    edit: { from: number; to: number; insert: LatexSuiteInsert },
+                ) {
+                    editor.dispatch({
+                        changes: { from: edit.from, to: edit.to, insert: edit.insert.insert },
+                        selection: { anchor: edit.from + edit.insert.tabstops[0].from },
+                        effects: start.of(null),
+                    });
+                    return true;
+                },
+            },
+        },
+    };
+    const getSuite = () => suite;
+    const { view, tracker } = createEditor("$\\fr$", 4, DEFAULT_SETTINGS, getSuite);
+    view.dispatch({ effects: StateEffect.appendConfig.of(field) });
+    const result = latexCompletionSource(
+        new CompletionContext(view.state, 4, false),
+        DEFAULT_SETTINGS,
+        tracker,
+        getSuite,
+    )!;
+    const option = result.options.find((item) => item.label === "\\frac")!;
+    (option.apply as Function)(view, option, result.from, result.to);
+    typeText(view, "x", "input.type");
+    assert.equal(completionStatus(view.state), "pending");
+    const escape = {
+        key: "Escape",
+        keyCode: 27,
+        shiftKey: false,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+    } as KeyboardEvent;
+    assert.equal(runScopeHandlers(view, escape, "latex-suite"), true);
+    assert.deepEqual(view.state.field(field), { tabstopGroups: [] });
+    assert.equal(view.state.doc.toString(), "$\\frac{x}{}$");
+    view.dispatch({ effects: start.of(null) });
+    assert.equal(runScopeHandlers(view, escape, "latex-suite"), false);
+    assert.deepEqual(view.state.field(field), { tabstopGroups: [{}] });
 });
 
 test("automatic activation: unannotated snippet edits inside closed math start a query", async () => {

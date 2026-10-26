@@ -10,6 +10,7 @@ import {
     nextSnippetField,
     pickedCompletion,
     prevSnippetField,
+    selectedCompletion,
     snippet,
 } from "@codemirror/autocomplete";
 import { EditorView, keymap, ViewUpdate } from "@codemirror/view";
@@ -20,6 +21,50 @@ import { isEscaped, isInMathContext } from "./math-context";
 import { scoreCommand } from "./fuzzy-match";
 import { UsageTracker } from "./usage-tracker";
 import { LatexAutocompleteSettings } from "./settings";
+import {
+    clearLatexSuiteSnippet,
+    GetLatexSuite,
+    hasLatexSuiteSnippet,
+    insertWithLatexSuite,
+    LatexSuitePlugin,
+} from "./latex-suite";
+
+const completionQueries = new WeakMap<Completion, string>();
+const applyingCompletion = new WeakSet<EditorView>();
+const suiteSnippets = new WeakMap<EditorView, LatexSuitePlugin>();
+const completeSymbols = new Set(
+    LATEX_COMMANDS.filter((cmd) => cmd.command === cmd.template).map((cmd) => cmd.command),
+);
+
+/** A Suite expansion may invalidate the menu before CodeMirror redraws it. */
+function acceptLatexCompletion(view: EditorView): boolean {
+    const completion = selectedCompletion(view.state);
+    const expected = completion ? completionQueries.get(completion) : undefined;
+    if (
+        expected !== undefined &&
+        new CompletionContext(view.state, view.state.selection.main.head, false).matchBefore(
+            /\\[a-zA-Z]*/,
+        )?.text !== expected
+    ) {
+        closeCompletion(view);
+        return false;
+    }
+    return acceptCompletion(view);
+}
+
+function clearAutocompleteSnippet(view: EditorView): boolean {
+    if (clearSnippet(view)) return true;
+    const suite = suiteSnippets.get(view);
+    return suite !== undefined && clearLatexSuiteSnippet(view, suite);
+}
+
+function dismissAutocomplete(view: EditorView): boolean {
+    const menuVisible = completionStatus(view.state) === "active";
+    const closed = closeCompletion(view);
+    // A pending query has no visible menu. It must not swallow Escape while
+    // the user is filling a template and wants to leave its inputs.
+    return menuVisible ? closed : clearAutocompleteSnippet(view) || closed;
+}
 
 /**
  * Human-readable category labels for the preview badge.
@@ -114,28 +159,36 @@ export function renderLatexPreview(container: HTMLElement, tex: string): void {
 export function createLatexAutocomplete(
     settings: LatexAutocompleteSettings,
     usageTracker: UsageTracker,
+    getLatexSuite?: GetLatexSuite,
 ): Extension {
     return [
         EditorState.allowMultipleSelections.of(true),
         autocompletion({
-            override: [(context) => latexCompletionSource(context, settings, usageTracker)],
+            override: [
+                (context) => latexCompletionSource(context, settings, usageTracker, getLatexSuite),
+            ],
             defaultKeymap: true,
             aboveCursor: false,
             icons: false,
         }),
-        automaticCompletionTrigger(settings, usageTracker),
+        automaticCompletionTrigger(settings, usageTracker, getLatexSuite),
         Prec.highest(
             keymap.of([
                 {
                     key: "Tab",
-                    run: (view) => acceptCompletion(view) || nextSnippetField(view),
+                    run: (view) => acceptLatexCompletion(view) || nextSnippetField(view),
                     shift: prevSnippetField,
                     // LaTeX Suite handles this scope before normal editor keys.
                     scope: "editor latex-suite",
                 },
                 {
+                    key: "Enter",
+                    run: acceptLatexCompletion,
+                    scope: "editor latex-suite",
+                },
+                {
                     key: "Escape",
-                    run: (view) => closeCompletion(view) || clearSnippet(view),
+                    run: dismissAutocomplete,
                     scope: "editor latex-suite",
                 },
             ]),
@@ -151,6 +204,7 @@ export function createLatexAutocomplete(
 function automaticCompletionTrigger(
     settings: LatexAutocompleteSettings,
     usageTracker: UsageTracker,
+    getLatexSuite?: GetLatexSuite,
 ): Extension {
     const pending = new WeakMap<EditorView, object>();
     const commandBeforeCursor = (state: EditorState): string | undefined => {
@@ -162,6 +216,12 @@ function automaticCompletionTrigger(
 
     const listener = (update: ViewUpdate): void => {
         const { view, state, startState } = update;
+        const suite = suiteSnippets.get(view);
+        if (suite && !hasLatexSuiteSnippet(state, suite)) suiteSnippets.delete(view);
+        if (applyingCompletion.has(view)) {
+            pending.delete(view);
+            return;
+        }
         const before = completionStatus(startState);
         const after = completionStatus(state);
         const excluded = update.transactions.some(
@@ -231,7 +291,7 @@ function automaticCompletionTrigger(
             // Restore the typing annotation without editing the document.
             // startCompletion would make this an explicit request and bypass
             // minChars on later queries (for example after backspacing).
-            if (latexCompletionSource(context, settings, usageTracker)) {
+            if (latexCompletionSource(context, settings, usageTracker, getLatexSuite)) {
                 view.dispatch({ userEvent: "input.type" });
             }
         });
@@ -243,6 +303,7 @@ export function latexCompletionSource(
     context: CompletionContext,
     settings: LatexAutocompleteSettings,
     usageTracker: UsageTracker,
+    getLatexSuite?: GetLatexSuite,
 ): CompletionResult | null {
     if (!settings.enabled) return null;
     // Match \command pattern - find the backslash
@@ -259,6 +320,11 @@ export function latexCompletionSource(
 
     // Get the query (everything after the backslash)
     const query = beforeCursor.text.slice(1);
+
+    // A finished symbol needs no replacement. In particular, leave Suite's
+    // automatic expansions alone and release Tab/Enter to its normal handlers.
+    // Ctrl+Space can still request alternatives deliberately.
+    if (!context.explicit && completeSymbols.has(beforeCursor.text)) return null;
 
     // Check minimum characters
     if (query.length < settings.minChars) {
@@ -295,6 +361,29 @@ export function latexCompletionSource(
             type: "function",
             boost: 0,
             apply: (view: EditorView, _completion: Completion, from: number, to: number) => {
+                if (
+                    !view.state.selection.main.empty ||
+                    view.state.selection.main.head !== to ||
+                    view.state.sliceDoc(from, to) !== beforeCursor.text
+                ) {
+                    closeCompletion(view);
+                    return;
+                }
+                const suite = getLatexSuite?.();
+                if (suite) {
+                    applyingCompletion.add(view);
+                    try {
+                        if (insertWithLatexSuite(view, suite, cmd.template, from, to)) {
+                            if (hasLatexSuiteSnippet(view.state, suite))
+                                suiteSnippets.set(view, suite);
+                            closeCompletion(view);
+                            usageTracker.recordUsage(cmd.command);
+                            return;
+                        }
+                    } finally {
+                        applyingCompletion.delete(view);
+                    }
+                }
                 // The snippet parser removes escapes before literal braces.
                 // Double those escapes so LaTeX commands such as \left\{ survive.
                 // A final stop keeps the last input editable with Shift+Tab and
@@ -331,6 +420,7 @@ export function latexCompletionSource(
                 return container;
             },
         };
+        completionQueries.set(completion, beforeCursor.text);
         return completion;
     });
 
@@ -349,7 +439,7 @@ export function latexCompletionSource(
             _to: number,
             updateContext: CompletionContext,
         ): CompletionResult | null => {
-            return latexCompletionSource(updateContext, settings, usageTracker);
+            return latexCompletionSource(updateContext, settings, usageTracker, getLatexSuite);
         },
     };
 }

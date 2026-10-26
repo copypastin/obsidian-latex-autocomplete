@@ -117,6 +117,13 @@ export function scoreCommand(
     // Boost command name matches over description matches
     if (commandResult.matched) {
         commandResult.score += 100;
+        // LaTeX names are case-sensitive. Each bonus exceeds the maximum
+        // usage boost (500), so history cannot turn \Omega into \omega or
+        // replace a fully typed command with a longer template.
+        if (query.length > 0 && command.startsWith(query)) {
+            commandResult.score += 600;
+            if (command === query) commandResult.score += 600;
+        }
     }
 
     if (commandResult.score >= descResult.score) {

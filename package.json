@@ -1,6 +1,6 @@
 {
   "name": "obsidian-latex-autocomplete",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Dropdown autocomplete for LaTeX commands inside math mode in Obsidian",
   "main": "main.js",

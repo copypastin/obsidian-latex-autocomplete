@@ -1,9 +1,9 @@
 {
   "id": "latex-autocomplete",
   "name": "LaTeX Autocomplete",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.0.0",
   "description": "Dropdown autocomplete for LaTeX commands inside math mode. Shows a searchable popup with rendered previews when you type backslash.",
-  "author": "Aaron Nguyen",
+  "author": "copypastin",
   "isDesktopOnly": false
 }

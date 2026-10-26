@@ -91,3 +91,28 @@ test("scoreCommand: ranking comparison for commands", () => {
     const scorePartial = scoreCommand("frac", "partial", "Partial derivative");
     assert.ok(scoreFrac.score > scorePartial.score);
 });
+
+test("scoreCommand: command capitalization outranks the maximum usage boost", () => {
+    for (const [query, preferred, other] of [
+        ["Ome", "Omega", "omega"],
+        ["ome", "omega", "Omega"],
+        ["Gam", "Gamma", "gamma"],
+        ["Del", "Delta", "delta"],
+        ["The", "Theta", "theta"],
+        ["Sig", "Sigma", "sigma"],
+    ]) {
+        assert.ok(
+            scoreCommand(query, preferred, "Greek letter").score >
+                scoreCommand(query, other, "Greek letter").score + 500,
+            query,
+        );
+    }
+});
+
+test("scoreCommand: a fully spelled command outranks longer templates and usage history", () => {
+    assert.ok(
+        scoreCommand("frac", "frac", "Fraction").score >
+            scoreCommand("frac", "frac{dy}{dx}", "Derivative").score + 500,
+    );
+    assert.equal(scoreCommand("FRACTION", "frac", "Fraction").matched, true);
+});

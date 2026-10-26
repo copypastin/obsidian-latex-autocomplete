@@ -7,6 +7,7 @@ import {
 } from "./settings";
 import { UsageTracker } from "./usage-tracker";
 import { createLatexAutocomplete } from "./autocomplete";
+import type { LatexSuitePlugin } from "./latex-suite";
 
 export default class LatexAutocompletePlugin extends Plugin {
     settings: LatexAutocompleteSettings = DEFAULT_SETTINGS;
@@ -61,7 +62,17 @@ export default class LatexAutocompletePlugin extends Plugin {
 
     private updateEditorExtension(): void {
         this.editorExtension.length = 0;
-        this.editorExtension.push(createLatexAutocomplete(this.settings, this.usageTracker));
+        this.editorExtension.push(
+            createLatexAutocomplete(this.settings, this.usageTracker, () => {
+                // Resolve at use time so either plugin can be enabled first.
+                const manager = (
+                    this.app as typeof this.app & {
+                        plugins?: { getPlugin(id: string): LatexSuitePlugin | null | undefined };
+                    }
+                ).plugins;
+                return manager?.getPlugin("obsidian-latex-suite");
+            }),
+        );
         this.app.workspace.updateOptions();
     }
 }

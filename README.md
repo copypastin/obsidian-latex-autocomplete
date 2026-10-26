@@ -21,7 +21,7 @@ recommended to be used on top of [LaTeX Suite](https://github.com/artisticat1/ob
 - **rendered previews** alongside the suggestions, with an example and a short description.
 - **Tab navigation** through template inputs, Shift+Tab to go back, and linked editing for repeated inputs.
 - **math detection** for inline `$...$`, display `$$...$$`, and fenced `math` or `latex` blocks. suggestions work inside open and closed math delimiters.
-- **LaTeX Suite compatibility**, including its snippet edits and keyboard handling.
+- **LaTeX Suite integration**, using Suite's own snippet engine and Tab stops when enabled, including templates inserted inside existing Suite snippets.
 - **local usage ranking** so commands you use more often move up the list.
 
 ## installation
@@ -50,6 +50,8 @@ for `\frac`, fill in the numerator, press Tab, and fill in the denominator. for 
 | Esc                       | close suggestions; when the menu is closed, end template navigation             |
 
 once you finish a template, normal editor and LaTeX Suite Tab handling resumes.
+
+LaTeX commands keep their capitalization: `\Ome` prefers `\Omega`, and `\ome` prefers `\omega`. once Suite finishes a symbol such as `\Omega`, autocomplete closes so Tab and Enter keep their normal behavior. Ctrl+Space can still open suggestions if you want alternatives.
 
 ### settings
 

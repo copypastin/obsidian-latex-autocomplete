@@ -10,7 +10,7 @@ Place your cursor inside the dollar signs and type `\` followed by the suggested
 
 - **Greek Letters:**
   - Type `$\` then `al` $\to$ select `\alpha` and press `Tab`
-  - Type `$\` then `beta` $\to$ select `\beta` and press `Tab`
+  - Type `$\` then `bet` $\to$ select `\beta` and press `Tab`
   - Result: $\alpha + \beta$
 
 - **Fractions & Cursor Placement:**
@@ -112,3 +112,17 @@ Verify that autocomplete stays hidden outside math contexts:
 ```
 
 Inside this `math` code block, type `\` and autocomplete should trigger with full previews!
+
+---
+
+## 7. LaTeX Suite Compatibility
+
+Enable LaTeX Suite and try these in Live Preview and Source mode:
+
+1. Inside `$...$`, type Suite's `Ome` shortcut. It should expand to `\Omega` and the suggestion menu should close. Press Tab or Enter: the capital `O` must stay unchanged.
+2. Repeat with `ome`, and confirm it stays `\omega`. Also try capital / lowercase Gamma, Delta, Theta, Sigma, and arrows such as `\Rightarrow` / `\rightarrow`.
+3. Type `\Om` directly: the first suggestion should be `\Omega`. Type `\om`: it should be `\omega`, even if you have used the other version frequently.
+4. After a completed `\Omega`, press Ctrl+Space to deliberately request alternatives. The first suggestion should still preserve its capitalization.
+5. Start a fraction using Suite's `//` snippet. In its numerator, use autocomplete to insert another `\frac`. Fill the inner numerator and denominator, then continue with Tab into the outer denominator. The expected result is `\frac{\frac{a}{b}}{c}`.
+6. Insert a 3×3 matrix using autocomplete. Fill all nine cells with Tab, use Shift+Tab to replace a filled cell, and confirm Tab leaves the matrix after the ninth cell.
+7. Press Esc with the menu closed while filling an autocomplete template. Its input navigation should end. An independent Suite snippet should keep Suite's usual Escape behavior.
